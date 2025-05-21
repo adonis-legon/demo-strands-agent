@@ -1,0 +1,16 @@
+{
+  "building-expense-mcp": {
+      "command": "python",
+      "args": ["server.py"],
+      "env": {
+        "VAR1": "var2"
+      }
+    },
+    "chile-cinepolis-mcp": {
+      "command": "node",
+      "args": ["index.js"],
+      "env": {
+        "VAR2": "var2"
+      }
+    }
+}

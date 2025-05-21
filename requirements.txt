@@ -1,0 +1,6 @@
+strands-agents
+strands-agents[ollama]
+python-dotenv
+argparse
+mcp-python-client
+readline
