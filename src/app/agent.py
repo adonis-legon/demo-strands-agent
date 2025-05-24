@@ -7,11 +7,13 @@ import os
 import subprocess
 import argparse
 import readline
+import contextlib
 from strands import Agent
 from strands.models.ollama import OllamaModel
-from src.app.mcp_client_manager import MCPClientManager
-from src.app.banner import print_banner
-from src.app.version import VERSION
+from strands.agent.conversation_manager import SlidingWindowConversationManager
+from .mcp_client_manager import MCPClientManager
+from .mcp_config import MCPConfigManager
+from .banner import print_banner
 
 # Set up Ctrl+L to clear screen
 def clear_screen(event=None):
@@ -21,8 +23,6 @@ def clear_screen(event=None):
     return None
 
 # Configure readline to handle Ctrl+L
-# Note: This direct binding may not work in all environments
-# The setup_readline function provides a more robust approach
 readline.parse_and_bind(r'"\C-l": clear_screen')
 
 def get_ollama_models_with_tags():
@@ -112,6 +112,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Strands Agent Demo with Ollama and MCP support")
     parser.add_argument("--mcp-config", type=str, 
                         help="Path to MCP server configuration file (optional)")
+    parser.add_argument("--window-size", type=int, default=10,
+                        help="Size of the conversation history window (default: 10)")
     return parser.parse_args()
 
 def main():
@@ -125,24 +127,14 @@ def main():
     print_banner()
     
     print("Starting Strands Agent Demo with Ollama and MCP support")
+    print(f"Conversation history window size: {args.window_size}")
     
-    # Initialize MCP client manager if config path is provided
-    mcp_manager = None
-    mcp_tools = []
+    # Load MCP configuration if provided
+    mcp_config_manager = MCPConfigManager(args.mcp_config)
+    mcp_config_manager.load_config()
     
-    if args.mcp_config:
-        print(f"Using MCP configuration from: {args.mcp_config}")
-        mcp_manager = MCPClientManager(args.mcp_config)
-        
-        if not mcp_manager.load_config():
-            print("Warning: Failed to load MCP configuration")
-        else:
-            print(f"Loaded MCP configuration with {len(mcp_manager.config_manager.list_servers())} servers")
-            
-            # Create MCP clients
-            mcp_manager.create_clients()
-    else:
-        print("No MCP configuration provided. Running without MCP tools.")
+    # Create MCP client manager
+    mcp_manager = MCPClientManager(mcp_config_manager)
     
     # Get Ollama URL from environment variable or use default
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
@@ -154,69 +146,34 @@ def main():
     print(f"Selected model: {selected_model}")
     
     # Create an Ollama model instance with the selected model
-    ollama_model = OllamaModel(
+    model = OllamaModel(
         host=ollama_url,
         model_id=selected_model
     )
     
-    # Create an agent using the Ollama model and MCP tools if available
-    if mcp_manager:
-        try:
-            # Connect to MCP clients and get tools
-            with mcp_manager:
-                mcp_tools = mcp_manager.list_all_tools()
-                print(f"Loaded {len(mcp_tools)} tools from MCP clients")
-                
-                # Create agent with MCP tools
-                agent = Agent(model=ollama_model, tools=mcp_tools)
-                
-                print("Press Ctrl+C or Ctrl+D to exit at any time")
-                print("\nStart asking questions!")
-                
-                # Interactive loop
-                try:
-                    while True:
-                        # Get user input
-                        try:
-                            user_input = input("\nYou: ")
-                        except EOFError:  # Handle Ctrl+D
-                            print("\nExiting...")
-                            break
-                        
-                        # Check if user wants to exit
-                        if user_input.lower() in ['exit', 'quit']:
-                            break
-                        
-                        # Handle clear screen command
-                        if user_input.lower() in ['clear', 'cls']:
-                            clear_screen()
-                            continue
-                        
-                        # Show that the model is answering
-                        print("\nThinking...")
-                        
-                        # Ask the agent - it will print the response automatically
-                        agent(user_input)
-                except KeyboardInterrupt:  # Handle Ctrl+C
-                    print("\nExiting...")
-        except Exception as e:
-            print(f"Error using MCP clients: {e}")
-            print("Falling back to basic agent without MCP tools")
-            # Create basic agent without MCP tools
-            agent = Agent(model=ollama_model)
-            run_basic_agent(agent)
-    else:
-        # Create basic agent without MCP tools
-        agent = Agent(model=ollama_model)
-        run_basic_agent(agent)
+    # Create a conversation manager with the specified window size
+    conversation_manager = SlidingWindowConversationManager(window_size=args.window_size)
     
+    # Create mcp clients
+    clients = mcp_manager.create_clients()
+    
+    with contextlib.ExitStack() as stack:
+        tools = []
+        for client in clients:
+            stack.enter_context(client)
+            tools.extend(client.list_tools_sync())
+            
+        agent = Agent(model=model, tools=tools, conversation_manager=conversation_manager)
+    
+        # Run the interactive loop
+        print("Press Ctrl+C or Ctrl+D to exit at any time")
+        print("\nStart asking questions!")
+        run_basic_agent(agent)
+        
     print("\nThank you for using Demo-Strands-Agent!")
 
 def run_basic_agent(agent):
     """Run a basic agent interaction loop"""
-    print("Press Ctrl+C or Ctrl+D to exit at any time")
-    print("\nStart asking questions!")
-    
     try:
         while True:
             # Get user input
@@ -242,8 +199,7 @@ def run_basic_agent(agent):
             agent(user_input)
     except KeyboardInterrupt:  # Handle Ctrl+C
         print("\nExiting...")
-        
-    print("\nThank you for using Demo-Strands-Agent!")
+
 if __name__ == "__main__":
     try:
         main()

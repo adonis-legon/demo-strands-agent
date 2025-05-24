@@ -1,146 +1,80 @@
 #!/usr/bin/env python3
 """
-Test cases for the MCP Client Manager
+Unit tests for mcp_client_manager.py (MCPClientManager)
 """
-
-import os
-import sys
-import json
 import unittest
-from unittest.mock import patch, MagicMock
-
-# Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-from src.app.mcp_client_manager import MCPClientManager
-
+from unittest.mock import MagicMock, patch
+from app.mcp_client_manager import MCPClientManager
 
 class TestMCPClientManager(unittest.TestCase):
-    """Test cases for the MCP Client Manager"""
-    
     def setUp(self):
-        """Set up test environment"""
-        # Create a temporary test config file
-        self.test_config_path = "test_mcp_config.json"
-        self.test_config = {
-            "test-server-1": {
-                "command": "python",
-                "args": ["server1.py"],
-                "env": {
-                    "TEST_VAR1": "value1"
-                }
-            },
-            "test-server-2": {
-                "command": "node",
-                "args": ["server2.js"],
-                "env": {
-                    "TEST_VAR2": "value2"
-                }
-            }
-        }
-        
-        # Write the test config to a file
-        with open(self.test_config_path, "w") as f:
-            json.dump(self.test_config, f)
-    
-    def tearDown(self):
-        """Clean up test environment"""
-        # Remove the temporary test config file
-        if os.path.exists(self.test_config_path):
-            os.remove(self.test_config_path)
-    
-    def test_load_config(self):
-        """Test loading configuration from file"""
-        manager = MCPClientManager(self.test_config_path)
-        result = manager.load_config()
-        
-        self.assertTrue(result)
-        self.assertEqual(len(manager.config_manager.list_servers()), 2)
-        self.assertIn("test-server-1", manager.config_manager.list_servers())
-        self.assertIn("test-server-2", manager.config_manager.list_servers())
-    
-    @patch('src.app.mcp_client_manager.MCPClient')
-    @patch('src.app.mcp_client_manager.stdio_client')
-    def test_create_clients(self, mock_stdio_client, mock_mcp_client):
-        """Test creating MCP clients"""
-        # Set up mocks
-        mock_client_instance = MagicMock()
-        mock_mcp_client.return_value = mock_client_instance
-        
-        # Create manager and load config
-        manager = MCPClientManager(self.test_config_path)
-        manager.load_config()
-        
-        # Create clients
-        clients = manager.create_clients()
-        
-        # Verify results
-        self.assertEqual(len(clients), 2)
-        self.assertIn("test-server-1", clients)
-        self.assertIn("test-server-2", clients)
-        
-        # Verify MCPClient was called twice
-        self.assertEqual(mock_mcp_client.call_count, 2)
-    
-    @patch('src.app.mcp_client_manager.MCPClient')
-    @patch('src.app.mcp_client_manager.stdio_client')
-    def test_context_manager(self, mock_stdio_client, mock_mcp_client):
-        """Test context manager functionality"""
-        # Set up mocks
-        mock_client1 = MagicMock()
-        mock_client2 = MagicMock()
-        
-        # Make MCPClient return different instances for different calls
-        mock_mcp_client.side_effect = [mock_client1, mock_client2]
-        
-        # Create manager and load config
-        manager = MCPClientManager(self.test_config_path)
-        manager.load_config()
-        manager.create_clients()
-        
-        # Use context manager
-        with manager:
-            pass
-        
-        # Verify __enter__ and __exit__ were called on each client
-        mock_client1.__enter__.assert_called_once()
-        mock_client1.__exit__.assert_called_once()
-        mock_client2.__enter__.assert_called_once()
-        mock_client2.__exit__.assert_called_once()
-    
-    @patch('src.app.mcp_client_manager.MCPClient')
-    @patch('src.app.mcp_client_manager.stdio_client')
-    def test_list_all_tools(self, mock_stdio_client, mock_mcp_client):
-        """Test listing all tools from clients"""
-        # Set up mocks
-        mock_client1 = MagicMock()
-        mock_client1.list_tools_sync.return_value = ["tool1", "tool2"]
-        
-        mock_client2 = MagicMock()
-        mock_client2.list_tools_sync.return_value = ["tool3", "tool4"]
-        
-        # Make MCPClient return different instances for different calls
-        mock_mcp_client.side_effect = [mock_client1, mock_client2]
-        
-        # Create manager and load config
-        manager = MCPClientManager(self.test_config_path)
-        manager.load_config()
-        manager.create_clients()
-        
-        # List all tools
-        tools = manager.list_all_tools()
-        
-        # Verify results
-        self.assertEqual(len(tools), 4)
-        self.assertIn("tool1", tools)
-        self.assertIn("tool2", tools)
-        self.assertIn("tool3", tools)
-        self.assertIn("tool4", tools)
-        
-        # Verify list_tools_sync was called on each client
-        mock_client1.list_tools_sync.assert_called_once()
-        mock_client2.list_tools_sync.assert_called_once()
+        # Mock MCPConfigManager
+        self.mock_config_manager = MagicMock()
+        self.mock_config_manager.list_servers.return_value = ["server1", "server2"]
+        # Mock server configs
+        mock_server_config1 = MagicMock()
+        mock_server_config1.command = "/bin/echo"
+        mock_server_config1.args = ["hello"]
+        mock_server_config1.env = {"FOO": "bar"}
+        mock_server_config2 = MagicMock()
+        mock_server_config2.command = "/bin/ls"
+        mock_server_config2.args = ["-l"]
+        mock_server_config2.env = {"BAR": "baz"}
+        self.mock_config_manager.get_server_config.side_effect = lambda name: {
+            "server1": mock_server_config1,
+            "server2": mock_server_config2
+        }[name]
 
+    @patch("app.mcp_client_manager.MCPClient")
+    @patch("app.mcp_client_manager.stdio_client")
+    @patch("app.mcp_client_manager.StdioServerParameters")
+    def test_create_clients_success(self, mock_params, mock_stdio_client, mock_mcp_client):
+        # Setup mocks
+        mock_mcp_client.side_effect = lambda func: f"MCPClient({func})"
+        manager = MCPClientManager(self.mock_config_manager)
+        clients = manager.create_clients()
+        self.assertEqual(len(clients), 2)
+        self.assertTrue(all(str(c).startswith("MCPClient(") for c in clients))
+        self.mock_config_manager.list_servers.assert_called_once()
+        self.assertEqual(self.mock_config_manager.get_server_config.call_count, 2)
+
+    def test_create_clients_no_config_manager(self):
+        manager = MCPClientManager(None)
+        with self.assertRaises(Exception) as ctx:
+            manager.create_clients()
+        self.assertIn("MCPConfigManager is missing", str(ctx.exception))
+
+    def test_create_clients_missing_server_config(self):
+        self.mock_config_manager.list_servers.return_value = ["server1"]
+        self.mock_config_manager.get_server_config.side_effect = lambda name: None
+        manager = MCPClientManager(self.mock_config_manager)
+        with self.assertRaises(Exception) as ctx:
+            manager.create_clients()
+        self.assertIn("Server config for server1 not found", str(ctx.exception))
+
+    def test_create_clients_missing_command_or_args(self):
+        bad_config = MagicMock()
+        bad_config.command = None
+        bad_config.args = None
+        bad_config.env = {"FOO": "bar"}
+        self.mock_config_manager.list_servers.return_value = ["server1"]
+        self.mock_config_manager.get_server_config.side_effect = lambda name: bad_config
+        manager = MCPClientManager(self.mock_config_manager)
+        with self.assertRaises(Exception) as ctx:
+            manager.create_clients()
+        self.assertIn("missing 'command' or 'args'", str(ctx.exception))
+
+    def test_create_clients_missing_env(self):
+        bad_config = MagicMock()
+        bad_config.command = "/bin/echo"
+        bad_config.args = ["hello"]
+        bad_config.env = None
+        self.mock_config_manager.list_servers.return_value = ["server1"]
+        self.mock_config_manager.get_server_config.side_effect = lambda name: bad_config
+        manager = MCPClientManager(self.mock_config_manager)
+        with self.assertRaises(Exception) as ctx:
+            manager.create_clients()
+        self.assertIn("missing 'env'", str(ctx.exception))
 
 if __name__ == "__main__":
     unittest.main()

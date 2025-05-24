@@ -21,4 +21,4 @@ source venv/bin/activate
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-echo "Setup complete. You can now run the application with ./run.sh"
+echo "Setup complete. You can now run the application with ./run_agent.sh"

@@ -61,7 +61,6 @@ class MCPConfigManager:
                     env=server_config.get('env', {})
                 )
             
-            print(f"Loaded {len(self.servers)} MCP server configurations")
             return True
             
         except json.JSONDecodeError as e:

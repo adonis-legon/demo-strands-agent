@@ -1,3 +1,1 @@
-"""
-Demo Strands Agent test package
-"""
+# This file marks the tests directory as a Python package.

@@ -3,7 +3,7 @@
 Banner display for the Demo Strands Agent
 """
 
-from src.app.version import VERSION
+from .version import VERSION
 
 
 def get_banner():
