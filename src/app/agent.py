@@ -11,6 +11,7 @@ import contextlib
 from strands import Agent
 from strands.models.ollama import OllamaModel
 from strands.agent.conversation_manager import SlidingWindowConversationManager
+from strands_tools import current_time
 from .mcp_client_manager import MCPClientManager
 from .mcp_config import MCPConfigManager
 from .banner import print_banner
@@ -155,15 +156,23 @@ def main():
     conversation_manager = SlidingWindowConversationManager(window_size=args.window_size)
     
     # Create mcp clients
+    print("Creating MCP clients...")
     clients = mcp_manager.create_clients()
     
+    agent = Agent(model=model, conversation_manager=conversation_manager, tools=[current_time]) #new
     with contextlib.ExitStack() as stack:
-        tools = []
+        # tools = []
         for client in clients:
             stack.enter_context(client)
-            tools.extend(client.list_tools_sync())
+
+            # List the tools available on the MCP server...
+            mcp_tools = client.list_tools_sync() #new
+            print(f"Available tools: {[tool.tool_name for tool in mcp_tools]}") #new
             
-        agent = Agent(model=model, tools=tools, conversation_manager=conversation_manager)
+            agent.tool_registry.process_tools(mcp_tools)
+            # tools.extend(client.list_tools_sync())
+            
+        # agent = Agent(model=model, tools=tools, conversation_manager=conversation_manager)
     
         # Run the interactive loop
         print("Press Ctrl+C or Ctrl+D to exit at any time")

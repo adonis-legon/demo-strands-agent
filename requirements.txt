@@ -1,7 +1,6 @@
 strands-agents
 strands-agents[ollama]
+strands-agents-tools
 python-dotenv
 argparse
-mcp-python-client
-readline
 coverage==7.5.0
